@@ -1,0 +1,41 @@
+name: Build (1.21.10)
+
+on:
+  push:
+    branches:
+      - "1.21.10"
+      - "codex/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - "1.21.10"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-fabric:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build Fabric
+        run: ./gradlew --no-daemon :fabric:build -x test
+
+      - name: Upload Fabric artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabric-build-libs
+          path: fabric/build/libs/*.jar
