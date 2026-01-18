@@ -11,6 +11,7 @@ import jagm.classicpipes.util.SortingMode;
 import jagm.classicpipes.util.Tuple;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
@@ -22,6 +23,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
+import java.text.Normalizer;
+import java.util.Locale;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -197,14 +200,17 @@ public class RequestMenu extends AbstractContainerMenu {
     }
 
     private static boolean itemMatchesSearch(ItemStack stack, String search) {
+        if (search.startsWith("#")) {
+            return itemMatchesSearchLegacy(stack, search);
+        }
         Matcher modMatcher = MOD_LOOKUP.matcher(search);
         if (modMatcher.find()) {
             String match = modMatcher.group();
             search = search.replace(match, "");
-            String searchedMod = normalise(match.replaceFirst("@", ""));
+            String searchedMod = normaliseAscii(match.replaceFirst("@", ""));
             String itemModID = MiscUtil.modFromItem(stack);
-            String itemModName = normalise(Services.LOADER_SERVICE.getModName(itemModID));
-            if (!normalise(itemModID).contains(searchedMod) && !itemModName.contains(searchedMod)) {
+            String itemModName = normaliseAscii(Services.LOADER_SERVICE.getModName(itemModID));
+            if (!normaliseAscii(itemModID).contains(searchedMod) && !itemModName.contains(searchedMod)) {
                 return false;
             }
         }
@@ -214,8 +220,8 @@ public class RequestMenu extends AbstractContainerMenu {
             String match = tagMatcher.group();
             search = search.replace(match, "");
             for (TagKey<Item> tag : stack.getTags().toList()) {
-                String searchedTag = normalise(match.replaceFirst("#", ""));
-                String itemTag = normalise(tag.location().toString());
+                String searchedTag = normaliseAscii(match.replaceFirst("#", ""));
+                String itemTag = normaliseAscii(tag.location().toString());
                 if (itemTag.contains(searchedTag)) {
                     foundTag = true;
                     break;
@@ -225,13 +231,63 @@ public class RequestMenu extends AbstractContainerMenu {
                 return false;
             }
         }
-        search = normalise(search);
-        String itemName = normalise(stack.getItemName().getString());
+        String normalizedSearch = normaliseUnicode(search);
+        if (normalizedSearch.isEmpty()) {
+            return true;
+        }
+        String itemName = normaliseUnicode(stack.getItemName().getString());
+        if (itemName.contains(normalizedSearch)) {
+            return true;
+        }
+        String translationKey = normaliseUnicode(stack.getItem().getDescriptionId());
+        if (translationKey.contains(normalizedSearch)) {
+            return true;
+        }
+        String registryId = normaliseUnicode(Objects.toString(BuiltInRegistries.ITEM.getKey(stack.getItem()), ""));
+        return registryId.contains(normalizedSearch);
+    }
+
+    private static boolean itemMatchesSearchLegacy(ItemStack stack, String search) {
+        Matcher modMatcher = MOD_LOOKUP.matcher(search);
+        if (modMatcher.find()) {
+            String match = modMatcher.group();
+            search = search.replace(match, "");
+            String searchedMod = normaliseAscii(match.replaceFirst("@", ""));
+            String itemModID = MiscUtil.modFromItem(stack);
+            String itemModName = normaliseAscii(Services.LOADER_SERVICE.getModName(itemModID));
+            if (!normaliseAscii(itemModID).contains(searchedMod) && !itemModName.contains(searchedMod)) {
+                return false;
+            }
+        }
+        Matcher tagMatcher = TAG_LOOKUP.matcher(search);
+        while (tagMatcher.find()) {
+            boolean foundTag = false;
+            String match = tagMatcher.group();
+            search = search.replace(match, "");
+            for (TagKey<Item> tag : stack.getTags().toList()) {
+                String searchedTag = normaliseAscii(match.replaceFirst("#", ""));
+                String itemTag = normaliseAscii(tag.location().toString());
+                if (itemTag.contains(searchedTag)) {
+                    foundTag = true;
+                    break;
+                }
+            }
+            if (!foundTag) {
+                return false;
+            }
+        }
+        search = normaliseAscii(search);
+        String itemName = normaliseAscii(stack.getItemName().getString());
         return itemName.contains(search);
     }
 
-    private static String normalise(String s) {
-        return s.toLowerCase().replaceAll("[^a-z0-9]", "");
+    private static String normaliseAscii(String s) {
+        return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private static String normaliseUnicode(String s) {
+        String normalized = Normalizer.normalize(s, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        return normalized.replaceAll("[^\\p{IsAlphabetic}\\p{IsDigit}]", "");
     }
 
 }
