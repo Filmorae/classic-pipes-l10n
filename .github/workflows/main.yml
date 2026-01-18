@@ -1,4 +1,4 @@
-name: Build (Fabric 1.21.10)
+name: Build (1.21.10)
 
 on:
   push:
@@ -17,29 +17,25 @@ permissions:
 jobs:
   build-fabric:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
+
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
 
-      # 可选但推荐：校验 wrapper 没被篡改
-      - name: Validate Gradle Wrapper
-        uses: gradle/wrapper-validation-action@v2
+      - name: Build Fabric
+        run: ./gradlew --no-daemon :fabric:build -x test
 
-      # 关键修复：确保 gradlew 在 Linux runner 上可执行 + 换行正确
-      - name: Prepare Gradle Wrapper
-        shell: bash
-        run: |
-          set -euo pipefail
-          ls -la ./gradlew || true
-          chmod +x ./gradlew
-          # 去掉可能的 CRLF（Windows 换行），避免 /bin/bash^M 之类的问题
-          sed -i 's/\r$//' ./gradlew
-          ./gradlew --version
+      - name: Upload Fabric artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabric-build-libs
+          path: fabric/build/libs/*.jar
